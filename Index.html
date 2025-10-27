@@ -1,0 +1,666 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { QrCode, Link, MessageSquare, Download, Copy, Check, Plus, Trash2, Package, Upload, Image } from 'lucide-react';
+
+const QRCodeGenerator = () => {
+  const [activeTab, setActiveTab] = useState('discord');
+  const [qrData, setQrData] = useState('');
+  const [copied, setCopied] = useState(false);
+  const qrContainerRef = useRef(null);
+  const fileInputRef = useRef(null);
+  
+  // Form states for different types
+  const [discordInput, setDiscordInput] = useState('');
+  const [videoInput, setVideoInput] = useState('');
+  const [strainName, setStrainName] = useState('');
+  const [urlInput, setUrlInput] = useState('');
+
+  // Custom logo upload
+  const [customLogo, setCustomLogo] = useState(null);
+  const [customLogoPreview, setCustomLogoPreview] = useState(null);
+
+  // Batch generation states
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchItems, setBatchItems] = useState([
+    { id: 1, strainName: '', url: '', type: 'video' }
+  ]);
+
+  // Branding options
+  const [includeLogo, setIncludeLogo] = useState(true);
+  const [logoSize, setLogoSize] = useState('medium');
+
+  // QR Code generation using QRious library via CDN
+  const generateQRCode = async (text) => {
+    if (!text.trim()) {
+      if (qrContainerRef.current) {
+        qrContainerRef.current.innerHTML = '';
+      }
+      return;
+    }
+
+    try {
+      // Load QRious library dynamically
+      if (!window.QRious) {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js';
+        script.onload = () => {
+          createQR(text);
+        };
+        document.head.appendChild(script);
+      } else {
+        createQR(text);
+      }
+    } catch (error) {
+      console.error('Error loading QR library:', error);
+      generateFallbackQR(text);
+    }
+  };
+
+  const createQR = (text) => {
+    if (!qrContainerRef.current) return;
+    
+    try {
+      qrContainerRef.current.innerHTML = '';
+      
+      const container = document.createElement('div');
+      container.className = 'relative inline-block';
+      
+      const canvas = document.createElement('canvas');
+      
+      const qr = new window.QRious({
+        element: canvas,
+        value: text,
+        size: 300,
+        background: 'white',
+        foreground: '#6B21A8',
+        level: 'M'
+      });
+      
+      canvas.className = 'w-full h-auto rounded-xl shadow-lg bg-white';
+      canvas.style.maxWidth = '300px';
+      canvas.style.height = 'auto';
+      
+      container.appendChild(canvas);
+      
+      // Add logo overlay if enabled
+      if (includeLogo) {
+        const logoOverlay = document.createElement('div');
+        logoOverlay.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-lg shadow-xl flex items-center justify-center';
+        
+        const sizeMap = {
+          small: '35px',
+          medium: '50px',
+          large: '65px'
+        };
+        
+        const size = sizeMap[logoSize];
+        logoOverlay.style.width = size;
+        logoOverlay.style.height = size;
+        
+        // Create simple QR icon
+        const icon = document.createElement('div');
+        icon.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 60%; height: 60%;">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        `;
+        icon.className = 'flex items-center justify-center';
+        
+        logoOverlay.appendChild(icon);
+        container.appendChild(logoOverlay);
+      }
+      
+      qrContainerRef.current.appendChild(container);
+      
+    } catch (error) {
+      console.error('Error creating QR code:', error);
+      generateFallbackQR(text);
+    }
+  };
+
+  const generateFallbackQR = (text) => {
+    if (!qrContainerRef.current) return;
+    
+    qrContainerRef.current.innerHTML = '';
+    
+    const img = document.createElement('img');
+    const encodedData = encodeURIComponent(text);
+    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodedData}&format=png&margin=10&color=6B21A8`;
+    img.alt = 'Generated QR Code';
+    img.className = 'w-full h-auto rounded-xl shadow-lg bg-white p-4';
+    img.style.maxWidth = '300px';
+    img.style.height = 'auto';
+    
+    qrContainerRef.current.appendChild(img);
+  };
+
+  const formatUrl = (url) => {
+    if (!url.trim()) return '';
+    
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return 'https://' + url;
+    }
+    return url;
+  };
+
+  useEffect(() => {
+    if (batchMode) return;
+    
+    let data = '';
+    
+    switch (activeTab) {
+      case 'discord':
+        data = formatUrl(discordInput);
+        break;
+      case 'video':
+        data = formatUrl(videoInput);
+        break;
+      case 'url':
+        data = formatUrl(urlInput);
+        break;
+      default:
+        data = '';
+    }
+    
+    setQrData(data);
+    generateQRCode(data);
+  }, [activeTab, discordInput, videoInput, urlInput, includeLogo, logoSize, customLogo, batchMode]);
+
+  const downloadQRCode = () => {
+    if (!qrData) return;
+    
+    const canvas = qrContainerRef.current?.querySelector('canvas');
+    const img = qrContainerRef.current?.querySelector('img');
+    
+    if (canvas) {
+      const link = document.createElement('a');
+      link.download = `serverstyler-qr-${activeTab}-${strainName || 'code'}.png`;
+      link.href = canvas.toDataURL();
+      link.click();
+    } else if (img) {
+      const link = document.createElement('a');
+      link.download = `serverstyler-qr-${activeTab}-${strainName || 'code'}.png`;
+      link.href = img.src;
+      link.click();
+    }
+  };
+
+  const copyToClipboard = async () => {
+    if (qrData) {
+      try {
+        await navigator.clipboard.writeText(qrData);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy text: ', err);
+      }
+    }
+  };
+
+  const resetForm = () => {
+    setDiscordInput('');
+    setVideoInput('');
+    setStrainName('');
+    setUrlInput('');
+    setQrData('');
+    if (qrContainerRef.current) {
+      qrContainerRef.current.innerHTML = '';
+    }
+  };
+
+  // Handle custom logo upload
+  const handleLogoUpload = (event) => {
+    const file = event.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setCustomLogo(e.target.result);
+        setCustomLogoPreview(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeCustomLogo = () => {
+    setCustomLogo(null);
+    setCustomLogoPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Batch generation functions
+  const addBatchItem = () => {
+    const newId = Math.max(...batchItems.map(item => item.id), 0) + 1;
+    setBatchItems([...batchItems, { id: newId, strainName: '', url: '', type: 'video' }]);
+  };
+
+  const removeBatchItem = (id) => {
+    if (batchItems.length > 1) {
+      setBatchItems(batchItems.filter(item => item.id !== id));
+    }
+  };
+
+  const updateBatchItem = (id, field, value) => {
+    setBatchItems(batchItems.map(item => 
+      item.id === id ? { ...item, [field]: value } : item
+    ));
+  };
+
+  const downloadAllBatchQRs = async () => {
+    for (let i = 0; i < batchItems.length; i++) {
+      const item = batchItems[i];
+      if (item.url.trim()) {
+        await new Promise(resolve => {
+          generateQRCode(formatUrl(item.url));
+          setTimeout(() => {
+            const canvas = qrContainerRef.current?.querySelector('canvas');
+            if (canvas) {
+              const link = document.createElement('a');
+              link.download = `serverstyler-${item.strainName || `item-${i+1}`}.png`;
+              link.href = canvas.toDataURL();
+              link.click();
+            }
+            resolve();
+          }, 500);
+        });
+      }
+    }
+  };
+
+  const tabs = [
+    { id: 'discord', label: 'Discord', icon: MessageSquare },
+    { id: 'video', label: 'Video', icon: Link },
+    { id: 'url', label: 'Custom URL', icon: Link }
+  ];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-indigo-50 to-violet-100 p-4">
+      <div className="max-w-5xl mx-auto">
+        {/* Header with Logo */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center mb-4">
+            <div className="w-32 h-32 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-2xl shadow-lg flex items-center justify-center">
+              <QrCode className="w-16 h-16 text-white" />
+            </div>
+          </div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent mb-2">
+            ServerStyler LLC
+          </h1>
+          <p className="text-gray-600 text-lg mb-1">Dispensary QR Code Generator</p>
+          <p className="text-sm text-gray-500">Create branded QR codes for Discord invites and strain videos</p>
+        </div>
+
+        {/* Batch Mode Toggle */}
+        <div className="bg-white rounded-2xl shadow-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Package className="w-5 h-5 text-purple-600" />
+              <div>
+                <h3 className="font-semibold text-gray-800">Batch Generation Mode</h3>
+                <p className="text-sm text-gray-500">Generate multiple QR codes at once</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setBatchMode(!batchMode)}
+              className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                batchMode 
+                  ? 'bg-purple-600 text-white' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {batchMode ? 'Single Mode' : 'Batch Mode'}
+            </button>
+          </div>
+        </div>
+
+        {batchMode ? (
+          // Batch Generation Interface
+          <div className="bg-white rounded-3xl shadow-2xl overflow-hidden p-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold text-gray-800 mb-4">Batch QR Code Generation</h2>
+              <p className="text-gray-600">Add multiple strains and their video URLs to generate QR codes in bulk</p>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              {batchItems.map((item, index) => (
+                <div key={item.id} className="border border-gray-200 rounded-xl p-4 hover:border-purple-300 transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 font-semibold">
+                      {index + 1}
+                    </div>
+                    <div className="flex-1 grid md:grid-cols-2 gap-4">
+                      <input
+                        type="text"
+                        value={item.strainName}
+                        onChange={(e) => updateBatchItem(item.id, 'strainName', e.target.value)}
+                        placeholder="Strain name (e.g., Blue Dream)"
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      />
+                      <input
+                        type="url"
+                        value={item.url}
+                        onChange={(e) => updateBatchItem(item.id, 'url', e.target.value)}
+                        placeholder="Video URL"
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      />
+                    </div>
+                    {batchItems.length > 1 && (
+                      <button
+                        onClick={() => removeBatchItem(item.id)}
+                        className="flex-shrink-0 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-4">
+              <button
+                onClick={addBatchItem}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                Add Another
+              </button>
+              <button
+                onClick={downloadAllBatchQRs}
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all font-medium shadow-lg"
+              >
+                <Download className="w-5 h-5" />
+                Download All QR Codes
+              </button>
+            </div>
+
+            {/* Hidden QR container for batch generation */}
+            <div ref={qrContainerRef} className="hidden"></div>
+          </div>
+        ) : (
+          // Single Generation Interface
+          <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+            {/* Branding Options */}
+            <div className="border-b border-gray-200 bg-purple-50 px-8 py-4">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={includeLogo}
+                        onChange={(e) => setIncludeLogo(e.target.checked)}
+                        className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Include Logo</span>
+                    </label>
+                    
+                    {includeLogo && (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-600">Size:</span>
+                          <select
+                            value={logoSize}
+                            onChange={(e) => setLogoSize(e.target.value)}
+                            className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          >
+                            <option value="small">Small</option>
+                            <option value="medium">Medium</option>
+                            <option value="large">Large</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className="text-xs text-purple-600 font-medium">
+                    Branded by ServerStyler LLC
+                  </div>
+                </div>
+                
+                {includeLogo && (
+                  <div className="flex items-center gap-3 pt-2 border-t border-purple-200">
+                    <Image className="w-4 h-4 text-purple-600" />
+                    <span className="text-sm text-gray-700 font-medium">Custom Logo:</span>
+                    {customLogoPreview ? (
+                      <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-lg border border-purple-300 shadow-sm">
+                        <img src={customLogoPreview} alt="Custom logo" className="w-8 h-8 object-contain" />
+                        <span className="text-sm text-gray-600">Logo uploaded</span>
+                        <button
+                          onClick={removeCustomLogo}
+                          className="ml-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-all"
+                          title="Remove custom logo"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={handleLogoUpload}
+                          className="hidden"
+                          id="logo-upload"
+                        />
+                        <label
+                          htmlFor="logo-upload"
+                          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg text-sm cursor-pointer hover:from-purple-700 hover:to-indigo-700 transition-all shadow-md"
+                        >
+                          <Upload className="w-4 h-4" />
+                          Upload from Phone
+                        </label>
+                        <span className="text-xs text-gray-500 italic">
+                          (Gallery, Camera, or Files)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="border-b border-gray-200">
+              <nav className="flex">
+                {tabs.map((tab) => {
+                  const IconComponent = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 text-sm font-medium transition-all duration-200 ${
+                        activeTab === tab.id
+                          ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
+                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <IconComponent className="w-4 h-4" />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            <div className="p-8">
+              <div className="grid lg:grid-cols-2 gap-8">
+                {/* Input Section */}
+                <div className="space-y-6">
+                  <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+                    {activeTab === 'discord' && 'Discord Server Invite'}
+                    {activeTab === 'video' && 'Strain Lifecycle Video'}
+                    {activeTab === 'url' && 'Custom URL'}
+                  </h2>
+
+                  {/* Discord Input */}
+                  {activeTab === 'discord' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Discord Invite Link
+                        </label>
+                        <input
+                          type="url"
+                          value={discordInput}
+                          onChange={(e) => setDiscordInput(e.target.value)}
+                          placeholder="https://discord.gg/yourserver"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Paste your Discord server invite link. Customers can scan to join your community!
+                        </p>
+                      </div>
+                      <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                        <p className="text-sm text-purple-800">
+                          <strong>Tip:</strong> Create a permanent invite link in Discord (Server Settings → Invites) so the QR code never expires.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Video Input */}
+                  {activeTab === 'video' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Strain Name
+                        </label>
+                        <input
+                          type="text"
+                          value={strainName}
+                          onChange={(e) => setStrainName(e.target.value)}
+                          placeholder="e.g., Blue Dream, OG Kush"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Video URL
+                        </label>
+                        <input
+                          type="url"
+                          value={videoInput}
+                          onChange={(e) => setVideoInput(e.target.value)}
+                          placeholder="YouTube, Vimeo, or any video link"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Link to a video showing the plant's lifecycle from seed to harvest
+                        </p>
+                      </div>
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                        <p className="text-sm text-indigo-800">
+                          <strong>Pro Tip:</strong> Print these QR codes on small labels and attach to product jars. Customers love seeing the growing process!
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Custom URL Input */}
+                  {activeTab === 'url' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Custom URL
+                      </label>
+                      <input
+                        type="url"
+                        value={urlInput}
+                        onChange={(e) => setUrlInput(e.target.value)}
+                        placeholder="Any website URL"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Create QR codes for your website, menu, or any other link
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={resetForm}
+                    className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all duration-200 font-medium"
+                  >
+                    Clear All Fields
+                  </button>
+                </div>
+
+                {/* QR Code Display Section */}
+                <div className="flex flex-col items-center space-y-6">
+                  <h2 className="text-2xl font-semibold text-gray-800">Generated QR Code</h2>
+                  
+                  <div className="bg-gray-50 rounded-2xl p-8 w-full max-w-sm">
+                    {qrData ? (
+                      <div className="text-center">
+                        <div ref={qrContainerRef} className="flex justify-center">
+                          {/* QR code will be dynamically inserted here */}
+                        </div>
+                        <p className="text-sm text-gray-600 mt-4">
+                          Scan with your device
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-center py-16">
+                        <QrCode className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                        <p className="text-gray-500">
+                          Fill in the form to generate your QR code
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {qrData && (
+                    <>
+                      <div className="flex gap-4 w-full max-w-sm">
+                        <button
+                          onClick={downloadQRCode}
+                          className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 font-medium shadow-lg"
+                        >
+                          <Download className="w-4 h-4" />
+                          Download
+                        </button>
+                        
+                        <button
+                          onClick={copyToClipboard}
+                          className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all duration-200 font-medium"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-4 h-4 text-green-600" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4" />
+                              Copy URL
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="w-full max-w-sm">
+                        <h3 className="text-sm font-medium text-gray-700 mb-2">QR Code Data:</h3>
+                        <div className="bg-gray-100 rounded-lg p-3 text-xs text-gray-600 max-h-32 overflow-y-auto">
+                          <pre className="whitespace-pre-wrap break-words">{qrData}</pre>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="text-center mt-8 text-gray-500 text-sm">
+          <p>Powered by ServerStyler LLC • Perfect for dispensary marketing • Build your community</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default QRCodeGenerator;
